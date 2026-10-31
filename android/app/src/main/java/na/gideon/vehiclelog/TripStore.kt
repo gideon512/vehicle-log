@@ -24,6 +24,23 @@ object TripStore {
     private var lastRaw: DoubleArray? = null
     private var lastKmPos: DoubleArray? = null
 
+    // ---- diagnostics event log (last 50) ----
+    @Synchronized fun log(ctx: Context, msg: String) {
+        val sp = ctx.getSharedPreferences("evlog", 0)
+        val a = try { JSONArray(sp.getString("log", "[]")) } catch (e: Exception) { JSONArray() }
+        a.put(JSONArray().put(System.currentTimeMillis()).put(msg))
+        val out = JSONArray(); val from = max(0, a.length() - 50); for (i in from until a.length()) out.put(a.get(i))
+        sp.edit().putString("log", out.toString()).apply()
+        android.util.Log.i("VehicleLog", msg)
+    }
+    fun logJson(ctx: Context): String = ctx.getSharedPreferences("evlog", 0).getString("log", "[]") ?: "[]"
+    fun logText(ctx: Context): String {
+        val a = JSONArray(logJson(ctx)); val f = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US); val sb = StringBuilder()
+        for (i in a.length() - 1 downTo 0) { val e = a.getJSONArray(i); sb.append(f.format(java.util.Date(e.getLong(0)))).append("  ").append(e.getString(1)).append('\n') }
+        return sb.toString()
+    }
+    var fixCount = 0
+
     @Synchronized fun state(ctx: Context): JSONObject {
         st?.let { return it }
         val s = ctx.getSharedPreferences(PREFS, 0).getString("state", null)
@@ -51,12 +68,12 @@ object TripStore {
             if (!r.optBoolean("paused")) return "already"
             r.put("paused", false); r.put("legStart", now); r.put("legKm0", r.optDouble("gpsKm", 0.0))
             val stops = r.getJSONArray("stops"); if (stops.length() > 0) stops.getJSONObject(stops.length() - 1).put("resumed", now)
-            persist(ctx); TrackService.start(ctx); return "resumed"
+            persist(ctx); log(ctx, "Trip resumed"); TrackService.start(ctx); return "resumed"
         }
         val n = JSONObject().put("id", "n" + now.toString(36)).put("start", now).put("legs", JSONArray()).put("stops", JSONArray())
             .put("track", JSONArray()).put("legStart", now).put("legKm0", 0.0).put("paused", false).put("gpsKm", 0.0)
         s.put("running", n); lastRec = null; lastRaw = null; lastKmPos = null
-        persist(ctx); TrackService.start(ctx); return "started"
+        persist(ctx); log(ctx, "Trip started"); fixCount = 0; TrackService.start(ctx); return "started"
     }
 
     private fun closeLeg(r: JSONObject, now: Long) {
@@ -71,7 +88,7 @@ object TripStore {
             closeLeg(r, now); r.put("paused", true)
             r.getJSONArray("stops").put(JSONObject().put("at", now).put("lat", fix?.optDouble("lat") ?: "").put("lon", fix?.optDouble("lon") ?: "").put("resumed", ""))
         }
-        persist(ctx); TrackService.stop(ctx); return "paused"
+        persist(ctx); log(ctx, "Trip paused (stop recorded)"); TrackService.stop(ctx); return "paused"
     }
 
     @Synchronized fun close(ctx: Context): String {
@@ -87,7 +104,7 @@ object TripStore {
         val t = JSONObject().put("id", r.getString("id")).put("start", r.getLong("start")).put("end", end).put("driveMs", drive)
             .put("legs", legs).put("stops", r.getJSONArray("stops")).put("track", r.getJSONArray("track")).put("gpsKm", km).put("use", "")
         s.getJSONArray("finished").put(t); s.remove("running")
-        persist(ctx); TrackService.stop(ctx); notifyEnded(ctx, t); return "closed"
+        persist(ctx); log(ctx, "Trip closed: %.1f km, %d track points".format(km, t.getJSONArray("track").length())); TrackService.stop(ctx); notifyEnded(ctx, t); return "closed"
     }
 
     fun homeDist(ctx: Context): Double? {
@@ -109,6 +126,8 @@ object TripStore {
     @Synchronized fun addFix(ctx: Context, loc: Location) {
         val s = state(ctx); val now = loc.time.takeIf { it > 0 } ?: System.currentTimeMillis()
         s.put("lastFix", JSONObject().put("t", System.currentTimeMillis()).put("lat", loc.latitude).put("lon", loc.longitude).put("acc", loc.accuracy.toDouble()))
+        fixCount++
+        if (fixCount == 1 || fixCount % 100 == 0) log(ctx, "GPS fix #$fixCount (±${loc.accuracy.roundToInt()} m)")
         val r = s.optJSONObject("running") ?: return
         if (r.optBoolean("paused") || r.has("ending")) return
         var kmh: Double? = if (loc.hasSpeed()) loc.speed * 3.6 else null
@@ -188,6 +207,13 @@ object TripStore {
             .setContentIntent(openIntent(ctx, "trips")).setAutoCancel(true)
             .addAction(action(ctx, ActionReceiver.END_HOME, "", "", 99)).build()
         try { ctx.getSystemService(NotificationManager::class.java).notify(2, n) } catch (e: SecurityException) {}
+    }
+
+    fun notifySimple(ctx: Context, id: Int, title: String, text: String, open: String) {
+        channels(ctx)
+        val n = Notification.Builder(ctx, CH_PROMPT).setSmallIcon(android.R.drawable.ic_menu_mylocation).setContentTitle(title).setContentText(text)
+            .setStyle(Notification.BigTextStyle().bigText(text)).setContentIntent(openIntent(ctx, open)).setAutoCancel(true).build()
+        try { ctx.getSystemService(NotificationManager::class.java).notify(id, n) } catch (e: SecurityException) { log(ctx, "Notification blocked (no permission)") }
     }
 
     fun notifyCantStart(ctx: Context) {

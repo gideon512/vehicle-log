@@ -27,6 +27,8 @@ class MainActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         TripStore.channels(this)
+        TripStore.log(this, "App opened (v${packageManager.getPackageInfo(packageName, 0).versionName}, Android ${Build.VERSION.RELEASE}/API ${Build.VERSION.SDK_INT})")
+        handleNative(intent)
         web = WebView(this)
         setContentView(web)
         web.settings.javaScriptEnabled = true
@@ -53,9 +55,10 @@ class MainActivity : Activity() {
 
     private fun hashFor(i: Intent?): String {
         val o = i?.getStringExtra("open") ?: return ""
-        return when { o.startsWith("trip:") -> "#open-" + o.substring(5); o == "resume" -> "#trip-start"; else -> "#tab-trips" }
+        return when { o.startsWith("trip:") -> "#open-" + o.substring(5); o == "resume" -> "#tab-trips"; o == "more" -> "#tab-set"; else -> "#tab-trips" }
     }
-    override fun onNewIntent(i: Intent) { super.onNewIntent(i); val h = hashFor(i); if (h.isNotEmpty()) web.evaluateJavascript("location.hash='${h.substring(1)}'", null) }
+    private fun handleNative(i: Intent?) { if (i?.getStringExtra("open") == "resume") { TripStore.log(this, "Start from notification tap: " + TripStore.start(this)) } }
+    override fun onNewIntent(i: Intent) { super.onNewIntent(i); handleNative(i); val h = hashFor(i); if (h.isNotEmpty()) web.evaluateJavascript("location.hash='${h.substring(1)}'", null) }
     override fun onResume() { super.onResume(); web.evaluateJavascript("window.natSync&&natSync()", null) }
     @Deprecated("") override fun onBackPressed() { web.evaluateJavascript("(function(){var d=document.getElementById('dlg');if(d&&d.open){d.close();return 1}return 0})()") { if (it == "0") @Suppress("DEPRECATION") super.onBackPressed() } }
 
@@ -88,6 +91,7 @@ class MainActivity : Activity() {
     }
     override fun onRequestPermissionsResult(rc: Int, p: Array<out String>, g: IntArray) {
         super.onRequestPermissionsResult(rc, p, g)
+        TripStore.log(this, "Permissions: " + Bridge().status())
         if (rc == 1) askBackground() else if (rc == 2) askBattery()
         web.evaluateJavascript("window.natRender&&natRender()", null)
     }
@@ -113,13 +117,21 @@ class MainActivity : Activity() {
             } catch (e: SecurityException) { return "{\"error\":\"Bluetooth permission not granted\"}" }
             return JSONObject().put("devices", a).toString()
         }
+        @JavascriptInterface fun log(): String = TripStore.logJson(this@MainActivity)
+        @JavascriptInterface fun logMsg(m: String) = TripStore.log(this@MainActivity, "web: " + m)
+        @JavascriptInterface fun getCar(): String = TripStore.state(this@MainActivity).optString("car", "")
+        @JavascriptInterface fun shareLog() { runOnUiThread {
+            val txt = "Vehicle Log diagnostics\nStatus: " + status() + "\nCar: " + getCar() + "\nTrip: " + (TripStore.running(this@MainActivity)?.let { "running, paused=" + it.optBoolean("paused") + ", km=" + it.optDouble("gpsKm") + ", points=" + it.optJSONArray("track")?.length() } ?: "none") + "\n\n" + TripStore.logText(this@MainActivity)
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT, "Vehicle Log diagnostics").putExtra(Intent.EXTRA_TEXT, txt), "Share log")) } }
         @JavascriptInterface fun status(): String {
             val pm = getSystemService(PowerManager::class.java)
             return JSONObject().put("fine", has(Manifest.permission.ACCESS_FINE_LOCATION))
                 .put("background", Build.VERSION.SDK_INT < 29 || has(Manifest.permission.ACCESS_BACKGROUND_LOCATION))
                 .put("bt", Build.VERSION.SDK_INT < 31 || has("android.permission.BLUETOOTH_CONNECT"))
                 .put("notif", Build.VERSION.SDK_INT < 33 || has("android.permission.POST_NOTIFICATIONS"))
-                .put("battery", pm.isIgnoringBatteryOptimizations(packageName)).toString()
+                .put("battery", pm.isIgnoringBatteryOptimizations(packageName))
+                .put("gpsOn", try { getSystemService(android.location.LocationManager::class.java).isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) } catch (e: Exception) { false })
+                .put("fixes", TripStore.fixCount).toString()
         }
         @JavascriptInterface fun requestPerms() { runOnUiThread { this@MainActivity.requestPerms() } }
         @JavascriptInterface fun openSettings() { runOnUiThread { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) } }

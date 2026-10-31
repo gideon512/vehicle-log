@@ -17,8 +17,8 @@ import android.app.NotificationManager
 class TrackService : Service(), LocationListener {
     companion object {
         fun start(ctx: Context) {
-            try { ctx.startForegroundService(Intent(ctx, TrackService::class.java)) }
-            catch (e: Exception) { TripStore.notifyCantStart(ctx) }
+            try { ctx.startForegroundService(Intent(ctx, TrackService::class.java)); TripStore.log(ctx, "GPS service start requested") }
+            catch (e: Exception) { TripStore.log(ctx, "GPS service start FAILED: ${e.javaClass.simpleName}: ${e.message}"); TripStore.notifyCantStart(ctx) }
         }
         fun stop(ctx: Context) { ctx.stopService(Intent(ctx, TrackService::class.java)) }
     }
@@ -35,12 +35,15 @@ class TrackService : Service(), LocationListener {
         try {
             if (Build.VERSION.SDK_INT >= 29) startForeground(TripStore.NOTIF_TRACK, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
             else startForeground(TripStore.NOTIF_TRACK, n)
-        } catch (e: Exception) { TripStore.notifyCantStart(this); stopSelf(); return START_NOT_STICKY }
+            TripStore.log(this, "GPS service running in foreground")
+        } catch (e: Exception) { TripStore.log(this, "startForeground FAILED: ${e.javaClass.simpleName}: ${e.message}"); TripStore.notifyCantStart(this); stopSelf(); return START_NOT_STICKY }
+        if (TripStore.running(this) == null || TripStore.running(this)!!.optBoolean("paused")) { TripStore.log(this, "GPS service: no active trip, stopping"); stopSelf(); return START_NOT_STICKY }
         if (lm == null) {
             lm = getSystemService(LocationManager::class.java)
             try {
                 lm?.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000L, 0f, this, Looper.getMainLooper())
-            } catch (e: SecurityException) { getSystemService(NotificationManager::class.java).notify(TripStore.NOTIF_TRACK, notif("Location permission missing — open the app")) }
+                TripStore.log(this, "GPS updates requested (provider enabled=${lm?.isProviderEnabled(LocationManager.GPS_PROVIDER)})")
+            } catch (e: SecurityException) { TripStore.log(this, "GPS FAILED: location permission missing"); getSystemService(NotificationManager::class.java).notify(TripStore.NOTIF_TRACK, notif("Location permission missing — open the app")) }
         }
         return START_STICKY
     }
@@ -57,7 +60,7 @@ class TrackService : Service(), LocationListener {
     }
     @Deprecated("") override fun onStatusChanged(p: String?, s: Int, b: android.os.Bundle?) {}
     override fun onProviderEnabled(p: String) {}
-    override fun onProviderDisabled(p: String) {}
+    override fun onProviderDisabled(p: String) { TripStore.log(this, "Phone location (GPS) switched OFF") }
     override fun onDestroy() { try { lm?.removeUpdates(this) } catch (e: Exception) {}; TripStore.persist(this); super.onDestroy() }
     override fun onBind(i: Intent?): IBinder? = null
 }

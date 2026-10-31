@@ -1,0 +1,318 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f766e"><meta name="apple-mobile-web-app-capable" content="yes">
+<title>Vehicle Log</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png">
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f1f5f9;color:#0f172a;padding-bottom:70px}
+header{background:#0f766e;color:#fff;padding:12px 14px;position:sticky;top:0;z-index:5;display:flex;gap:8px;align-items:center}
+header h1{font-size:18px;margin:0;flex:1}select,input,textarea,button{font:inherit}
+header select{max-width:55%;padding:6px;border-radius:8px;border:0}
+main{padding:12px;max-width:800px;margin:auto}.card{background:#fff;border-radius:12px;padding:12px;margin-bottom:12px;box-shadow:0 1px 3px #0002}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.stat{background:#f8fafc;border-radius:10px;padding:10px}.stat b{display:block;font-size:18px}.stat span{font-size:12px;color:#64748b}
+nav{position:fixed;bottom:0;left:0;right:0;background:#fff;display:flex;border-top:1px solid #e2e8f0;padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;min-width:0;border:0;background:none;padding:10px 0;font-size:12px;color:#64748b}nav button.on{color:#0f766e;font-weight:700}
+.btn{background:#0f766e;color:#fff;border:0;border-radius:8px;padding:9px 14px}.btn2{background:#e2e8f0;color:#0f172a;border:0;border-radius:8px;padding:9px 14px}.del{background:#dc2626;color:#fff;border:0;border-radius:8px;padding:9px 14px}
+.row{display:flex;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid #f1f5f9;cursor:pointer}.row:last-child{border:0}.muted{color:#64748b;font-size:13px}
+.tag{font-size:11px;padding:2px 7px;border-radius:9px;background:#e2e8f0}.fuel{background:#dbeafe}.service{background:#dcfce7}.expense{background:#fef3c7}
+.over{color:#dc2626;font-weight:700}.due{color:#d97706;font-weight:700}.ok{color:#16a34a}
+label{display:block;font-size:13px;color:#475569;margin-top:8px}label input,label select,label textarea{width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:8px;margin-top:3px;background:#fff}
+dialog{border:0;border-radius:14px;width:min(94vw,480px);padding:16px}dialog::backdrop{background:#0006}
+.fab{position:fixed;right:16px;bottom:80px;width:56px;height:56px;border-radius:50%;font-size:28px;background:#0f766e;color:#fff;border:0;box-shadow:0 3px 8px #0004}
+.filters{display:flex;gap:6px;margin-bottom:8px}.filters input,.filters select{min-width:0;}.filters input{flex:1;padding:8px;border:1px solid #cbd5e1;border-radius:8px}.filters select{padding:8px;border-radius:8px;border:1px solid #cbd5e1}
+h2{font-size:16px;margin:0 0 8px}svg{width:100%;height:auto}
+</style></head><body>
+<noscript><div style="background:#dc2626;color:#fff;padding:16px;font-size:16px">This app needs JavaScript. Open this file in Chrome (Android) or Safari (iPhone), not in the Google Drive or Files preview.</div></noscript>
+<div id="banner" style="display:none;background:#fef3c7;color:#78350f;padding:10px 14px;font-size:14px"></div>
+<script>window.__err=function(m){var b=document.getElementById('banner');if(!b)return;b.style.display='block';b.style.background='#fee2e2';b.style.color='#7f1d1d';b.innerHTML='<b>Something went wrong:</b> '+String(m).replace(/</g,'&lt;')+'<br>Try opening this file in Chrome (Android) or Safari (iPhone) instead of a preview viewer.'};window.onerror=function(m){window.__err(m)};</script>
+<header><h1>🚙 Vehicle Log</h1><select id="vsel" aria-label="Vehicle"></select></header>
+<main id="app"></main>
+<button class="fab" id="fab" aria-label="Add">+</button>
+<nav><button data-t="dash" class="on">📊<br>Dashboard</button><button data-t="hist">📜<br>History</button><button data-t="trips">🛣️<br>Trips</button><button data-t="rem">⏰<br>Reminders</button><button data-t="veh">🚗<br>Vehicles</button><button data-t="set">⚙️<br>More</button></nav>
+<dialog id="dlg"><form id="frm"></form></dialog>
+<script>
+const KEY='vehicleLog.v1',$=s=>document.querySelector(s),uid=()=>Math.random().toString(36).slice(2,10);
+const STYPES=['Tyre rotation','Balancing','Alignment','Oil change','Tyres','Brakes','Battery','Licence/roadworthy','Odometer reading','Other'];
+const ETYPES=['Insurance','Licence','Parking','Tolls','Car wash','Accessories','Repairs','Finance','Other'];
+const N=v=>'N$'+(+v||0).toLocaleString('en-ZA',{minimumFractionDigits:2,maximumFractionDigits:2});
+const today=()=>new Date().toISOString().slice(0,10);
+function seed(){const v=uid();return{cur:v,vehicles:[{id:v,name:'Isuzu MU-X',reg:'',year:'',notes:'Seeded from West Coast Wheel & Tyre invoices (Swakopmund)'}],entries:[
+{id:uid(),v,kind:'service',date:'2024-11-23',type:'Tyres',odo:'',cost:18900.04,workshop:'West Coast Wheel & Tyre, Swakopmund',notes:'5× Sailun Terramax RT 265/60R18 + balancing ×5 + valves + alignment. Inv 00018118 (ref ISUZU MUX)'},
+{id:uid(),v,kind:'service',date:'2024-11-30',type:'Other',odo:'',cost:2500,workshop:'West Coast Wheel & Tyre, Swakopmund',notes:'Steel Mate TPMS 4-sensor. Inv 00018259'},
+{id:uid(),v,kind:'service',date:'2025-10-04',type:'Balancing',odo:'',cost:1750.02,workshop:'West Coast Wheel & Tyre, Swakopmund',notes:'Balancing ×4 + alignment. Inv 00023999, ref N 65826 W — vehicle NOT confirmed on invoice'},
+{id:uid(),v,kind:'service',date:'2026-01-03',type:'Alignment',odo:'',cost:400,workshop:'West Coast Wheel & Tyre, Swakopmund',notes:'Alignment. Inv 00025862 — vehicle NOT confirmed on invoice'},
+{id:uid(),v,kind:'service',date:'2026-10-31',type:'Odometer reading',odo:162409,cost:0,workshop:'',notes:'Odometer reading'}],
+reminders:[{id:uid(),v,title:'Tyre rotation',type:'Tyre rotation',km:10000,months:6,lastDate:'2025-10-04',lastOdo:143000,note:'Estimated – probably done unbilled with West Coast balancing, inv 00023999'},{id:uid(),v,title:'Oil change',type:'Oil change',km:10000,months:'',lastDate:'',lastOdo:160000}]}}
+let STORE=null;try{const t='__t';window.localStorage.setItem(t,'1');window.localStorage.removeItem(t);STORE=window.localStorage}catch(e){}
+function warn(m){const b=$('#banner');b.style.display='block';b.innerHTML=m}
+if(!STORE)warn('⚠️ This viewer blocks saving. You can look around, but <b>nothing will be kept</b>. Download the file and open it in Chrome (Android) or Safari (iPhone).');
+let D;try{D=JSON.parse(STORE&&STORE.getItem(KEY))}catch(e){}if(!D||!D.vehicles){D=seed();D.firstRun=true}
+const save=()=>{if(!STORE)return;try{STORE.setItem(KEY,JSON.stringify(D))}catch(e){warn('⚠️ Could not save: '+e.message+'. Export a backup.')}};save();
+let tab='dash',filt={q:'',k:'all'};
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ent=()=>D.entries.filter(e=>e.v===D.cur).sort((a,b)=>b.date.localeCompare(a.date)||(+b.odo||0)-(+a.odo||0));
+const cost=e=>e.kind==='fuel'?(+e.litres||0)*(+e.price||0):(+e.cost||0);
+function maxOdo(){return Math.max(0,...ent().map(e=>+e.odo||0),...(D.trips||[]).filter(t=>t.v===D.cur).map(t=>+t.endOdo||0))}
+function fuelStats(){const f=ent().filter(e=>e.kind==='fuel'&&e.odo).sort((a,b)=>a.odo-b.odo);const pts=[];let last=null,acc=0;
+for(const e of f){if(last){acc+=+e.litres;if(e.full){const km=e.odo-last.odo;if(km>0)pts.push({date:e.date,l100:acc/km*100,km});acc=0;last=e}}else if(e.full)last=e}
+const km=pts.reduce((s,p)=>s+p.km,0),l=pts.reduce((s,p)=>s+p.l100*p.km/100,0);return{pts,avg:km?l/km*100:null}}
+function remStatus(r){const all=ent().filter(e=>e.kind==='service'&&(e.type===r.type||(e.notes||'').toLowerCase().includes(r.type.toLowerCase())));
+let ld=r.lastDate,lo=+r.lastOdo||0;if(all[0]){if(!ld||all[0].date>ld)ld=all[0].date;const o=Math.max(...all.map(e=>+e.odo||0));if(o>lo)lo=o}
+const out={ld,lo,parts:[],st:'ok'},cur=maxOdo();
+if(r.km&&lo){const due=lo+ +r.km,left=due-cur;out.parts.push(`due at ${due.toLocaleString()} km (${left<0?Math.abs(left).toLocaleString()+' km overdue':left.toLocaleString()+' km left'})`);if(left<0)out.st='over';else if(left<1000&&out.st!='over')out.st='due'}
+else if(r.km)out.parts.push(`every ${(+r.km).toLocaleString()} km — no odometer recorded yet`);
+if(r.months&&ld){const d=new Date(ld);d.setMonth(d.getMonth()+ +r.months);const days=Math.round((d-new Date())/864e5);out.parts.push(`due ${d.toISOString().slice(0,10)} (${days<0?-days+' days overdue':days+' days'})`);if(days<0)out.st='over';else if(days<30&&out.st!='over')out.st='due'}
+else if(r.months)out.parts.push(`every ${r.months} months — no date yet`);return out}
+function chart(data,label,fmt){if(!data.length)return`<p class="muted">No data for ${label} yet.</p>`;const W=340,H=150,P=30,mx=Math.max(...data.map(d=>d.y))||1,bw=(W-P)/data.length;
+return`<svg viewBox="0 0 ${W} ${H+20}" role="img" aria-label="${label}"><line x1="${P}" y1="${H}" x2="${W}" y2="${H}" stroke="#cbd5e1"/>`+data.map((d,i)=>{const h=d.y/mx*(H-20);return`<rect x="${P+i*bw+2}" y="${H-h}" width="${Math.max(bw-4,2)}" height="${h}" rx="3" fill="#0f766e"><title>${d.x}: ${fmt(d.y)}</title></rect><text x="${P+i*bw+bw/2}" y="${H+14}" font-size="9" text-anchor="middle" fill="#64748b">${d.x}</text>`}).join('')+`<text x="2" y="12" font-size="9" fill="#64748b">${fmt(mx)}</text></svg>`}
+function line(pts){if(pts.length<2)return'<p class="muted">Need at least 3 full-tank fill-ups with odometer readings for a consumption chart.</p>';const W=340,H=140,P=30,ys=pts.map(p=>p.l100),mn=Math.min(...ys)*.9,mx=Math.max(...ys)*1.1;
+const xy=pts.map((p,i)=>[P+i*(W-P-10)/(pts.length-1),H-(p.l100-mn)/(mx-mn||1)*(H-10)]);return`<svg viewBox="0 0 ${W} ${H+10}"><polyline fill="none" stroke="#0f766e" stroke-width="2" points="${xy.map(a=>a.join(',')).join(' ')}"/>${xy.map((a,i)=>`<circle cx="${a[0]}" cy="${a[1]}" r="3" fill="#0f766e"><title>${pts[i].date}: ${pts[i].l100.toFixed(1)} L/100km</title></circle>`).join('')}<text x="2" y="10" font-size="9" fill="#64748b">${mx.toFixed(1)}</text><text x="2" y="${H}" font-size="9" fill="#64748b">${mn.toFixed(1)}</text></svg>`}
+function dash(){return firstRunBanner()+dash0()}
+function dash0(){const E=ent(),tot=E.reduce((s,e)=>s+cost(e),0),by=k=>E.filter(e=>e.kind===k).reduce((s,e)=>s+cost(e),0),fs=fuelStats(),odos=E.map(e=>+e.odo).filter(Boolean),dist=odos.length>1?Math.max(...odos)-Math.min(...odos):0,lit=E.filter(e=>e.kind==='fuel').reduce((s,e)=>s+(+e.litres||0),0);
+const m={};const now=new Date();for(let i=11;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);m[d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')]=0}E.forEach(e=>{const k=e.date.slice(0,7);if(k in m)m[k]+=cost(e)});
+const rs=D.reminders.filter(r=>r.v===D.cur).map(r=>[r,remStatus(r)]).filter(x=>x[1].st!=='ok');
+return`${rs.length?`<div class="card"><h2>⚠️ Attention</h2>${rs.map(([r,s])=>`<div class="${s.st}">${esc(r.title)}: ${s.parts.join('; ')}</div>`).join('')}</div>`:''}
+<div class="card"><h2>Totals</h2><div class="grid"><div class="stat"><b>${N(tot)}</b><span>Total spent</span></div><div class="stat"><b>${N(by('fuel'))}</b><span>Fuel</span></div><div class="stat"><b>${N(by('service'))}</b><span>Service & maintenance</span></div><div class="stat"><b>${N(by('expense'))}</b><span>Other expenses</span></div>
+<div class="stat"><b>${fs.avg?fs.avg.toFixed(2):'—'}</b><span>Avg L/100km</span></div><div class="stat"><b>${dist?N(tot/dist):'—'}</b><span>Cost per km</span></div><div class="stat"><b>${maxOdo()?maxOdo().toLocaleString()+' km':'—'}</b><span>Last odometer</span></div><div class="stat"><b>${lit.toFixed(1)} L</b><span>Fuel bought</span></div></div></div>
+<div class="card"><h2>Spending – last 12 months</h2>${chart(Object.entries(m).map(([k,y])=>({x:k.slice(5),y})),'monthly spend',N)}</div>
+<div class="card"><h2>Fuel consumption (L/100km)</h2>${line(fs.pts)}</div>
+<div class="card"><h2>Recent</h2>${E.slice(0,5).map(rowH).join('')||'<p class="muted">No entries yet. Tap + to add.</p>'}</div>`}
+function rowH(e){const t=e.kind==='fuel'?`Fuel ${(+e.litres).toFixed(2)} L${e.full?' (full)':''}`:e.kind==='service'?e.type:e.type||'Expense';
+return`<div class="row" data-id="${e.id}"><div><span class="tag ${e.kind}">${e.kind}</span> <b>${esc(t)}</b><div class="muted">${e.date}${e.odo?' · '+(+e.odo).toLocaleString()+' km':''}${e.workshop?' · '+esc(e.workshop):''}</div>${e.notes?`<div class="muted">${esc(e.notes)}</div>`:''}</div><b>${N(cost(e))}</b></div>`}
+function hist(){const q=filt.q.toLowerCase(),E=ent().filter(e=>(filt.k==='all'||e.kind===filt.k)&&(!q||JSON.stringify(e).toLowerCase().includes(q)));
+return`<div class="filters"><input id="q" placeholder="Search…" value="${esc(filt.q)}"><select id="k">${['all','fuel','service','expense'].map(k=>`<option ${filt.k===k?'selected':''}>${k}</option>`).join('')}</select></div><div class="card">${E.map(rowH).join('')||'<p class="muted">Nothing found.</p>'}<p class="muted">${E.length} entries · ${N(E.reduce((s,e)=>s+cost(e),0))}</p></div>`}
+function rem(){const R=D.reminders.filter(r=>r.v===D.cur);return`<div class="card"><h2>Reminders</h2><p class="muted">Based on last matching service entry (or a manual "last done") plus the interval. Km reminders need odometer readings.</p>${R.map(r=>{const s=remStatus(r);return`<div class="row" data-rid="${r.id}"><div><b>${esc(r.title)}</b><div class="muted">Last: ${s.ld||(s.lo?'date unknown':'never')}${s.lo?' @ '+s.lo.toLocaleString()+' km':''}</div><div class="${s.st}">${s.parts.join('; ')||'No interval'}</div>${r.note?`<div class="muted">${esc(r.note)}</div>`:''}</div><span class="${s.st}">${s.st==='over'?'OVERDUE':s.st==='due'?'DUE SOON':'OK'}</span></div>`}).join('')||'<p class="muted">None.</p>'}</div><button class="btn" id="addR">+ Add reminder</button>`}
+function veh(){return`<div class="card"><h2>Vehicles</h2>${D.vehicles.map(v=>`<div class="row" data-vid="${v.id}"><div><b>${esc(v.name)}</b><div class="muted">${esc([v.reg,v.year].filter(Boolean).join(' · '))} ${D.entries.filter(e=>e.v===v.id).length} entries</div></div>${v.id===D.cur?'✅':''}</div>`).join('')}</div><button class="btn" id="addV">+ Add vehicle</button>`}
+function sett(){return`<div class="card" id="move"><h2>📦 Move data from old file</h2><p class="muted">This web app keeps its own storage, separate from the old vehicle-log.html file. To bring your records across:</p><ol style="padding-left:18px;font-size:14px"><li>Open the <b>old file</b> in Chrome (Downloads) → More → <b>Export JSON backup</b>.</li><li>Come back here → tap <b>Import backup</b> below and pick that file (it's in Downloads).</li></ol><button class="btn" type="button" onclick="pickImport()">Import backup</button></div><div class="card"><h2>Backup & export</h2><p class="muted">Data is stored only in this browser on this device. Export a backup regularly.</p><p><button class="btn" id="exJ">Export JSON backup</button></p><p><button class="btn2" id="exC">Export CSV (all vehicles)</button></p><p><label>Import JSON backup (replaces all data)<input type="file" id="imJ" accept=".json,application/json"></label></p><p><button class="del" id="wipe">Delete all data</button></p></div>`+homeCard()+`<div class="card" id="help"><h2>Help: automatic trips with MacroDroid (Android)</h2><ol style="padding-left:18px;font-size:14px;line-height:1.5">
+<li>Keep this file at <b>Download/vehicle-log.html</b> and open it in <b>Chrome</b> once (this is where your data lives).</li>
+<li>Install <b>MacroDroid</b> from the Play Store.</li>
+<li>New macro → Trigger: <b>Connectivity → Bluetooth event → Device connected</b> → pick your car radio.</li>
+<li>Action: <b>Applications → Open website / HTTP GET → Open website</b>, URL: <code>file:///sdcard/Download/vehicle-log.html#trip-start</code> (choose Chrome as browser if asked). <b>Installed web app:</b> use your https address instead, e.g. <code>https://gideon512.github.io/vehicle-log/#trip-start</code> (and <code>…/vehicle-log/#trip-end</code> for disconnected) — this is more reliable than file://. Name it "Trip start".</li>
+<li>Second macro → Trigger: Bluetooth <b>Device disconnected</b> → same radio. Action: open <code>file:///sdcard/Download/vehicle-log.html#trip-end</code>.</li>
+<li>Set <b>Home</b> above. Radio off away from home = a stop (trip paused); radio on again = trip resumes. Radio off at home = trip ends and you'll be asked Personal or Company. If you're not looking, the end time is kept and the question waits on the Trips tab.</li></ol>
+<p class="muted"><b>Limits:</b> GPS only counts while this page is open in front with the screen on (the app asks to keep the screen awake). If the phone locks or you switch apps, GPS stops; use the odometer km instead. Some Android/Chrome versions block opening <code>file://</code> links from other apps; if MacroDroid shows an error or Chrome opens a blank page, use the Start/End buttons, or host the file at an https address. Diesel litres and cost are <b>estimates</b> (km × average L/100km × last price). Data is stored only in Chrome on this phone — export backups.</p></div><div class="card muted">Install: in Chrome use ⋮ → "Add to Home screen"; in Safari use Share → "Add to Home Screen".</div>`}
+function render(){$('#vsel').innerHTML=D.vehicles.map(v=>`<option value="${v.id}" ${v.id===D.cur?'selected':''}>${esc(v.name)}</option>`).join('')||'<option>No vehicle</option>';
+$('#app').innerHTML={dash,hist,trips,rem,veh,set:sett}[tab]();document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));$('#fab').style.display=['dash','hist'].includes(tab)?'':'none';bind()}
+function bind(){bindTrips();document.querySelectorAll('[data-id]').forEach(r=>r.onclick=()=>entryForm(D.entries.find(e=>e.id===r.dataset.id)));
+document.querySelectorAll('[data-rid]').forEach(r=>r.onclick=()=>remForm(D.reminders.find(e=>e.id===r.dataset.rid)));
+document.querySelectorAll('[data-vid]').forEach(r=>r.onclick=()=>vehForm(D.vehicles.find(e=>e.id===r.dataset.vid)));
+const q=$('#q');if(q){q.oninput=()=>{filt.q=q.value;const p=q.selectionStart;render();$('#q').focus();$('#q').setSelectionRange(p,p)};$('#k').onchange=e=>{filt.k=e.target.value;render()}}
+$('#addR')&&($('#addR').onclick=()=>remForm());$('#addV')&&($('#addV').onclick=()=>vehForm());
+if($('#exJ')){$('#exJ').onclick=()=>dl('vehicle-log-backup-'+today()+'.json',JSON.stringify(D,null,1),'application/json');
+$('#exC').onclick=()=>{const c=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"',vn=id=>(D.vehicles.find(v=>v.id===id)||{}).name;dl('vehicle-log-'+today()+'.csv',['vehicle,kind,date,odometer_km,type,litres,price_per_l,full_tank,cost_nad,workshop,notes'].concat(D.entries.map(e=>[vn(e.v),e.kind,e.date,e.odo,e.type,e.litres,e.price,e.full?'yes':'',cost(e).toFixed(2),e.workshop,e.notes].map(c).join(','))).join('\n'),'text/csv')};
+$('#imJ').onchange=e=>doImport(e.target.files[0]);
+$('#wipe').onclick=()=>{if(confirm('Delete ALL vehicles and records?')){D={cur:null,vehicles:[],entries:[],reminders:[]};save();render()}}}}
+function dl(n,t,m){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:m}));a.download=n;a.click()}
+function form(html,onSave,onDel,onCancel){$('#frm').innerHTML=html+`<div style="display:flex;gap:8px;margin-top:14px"><button class="btn" value="save" style="flex:1">Save</button><button class="btn2" value="cancel" formnovalidate>Cancel</button>${onDel?'<button class="del" value="del" formnovalidate>Delete</button>':''}</div>`;
+$('#frm').onsubmit=ev=>{ev.preventDefault();const v=lastBtn;if(v==='save'){const o={};$('#frm').querySelectorAll('[name]').forEach(el=>{if(el.type==='checkbox'){if(el.checked)o[el.name]='on'}else o[el.name]=el.value});onSave(o);save();render()}else if(v==='del'){if(!confirm('Delete?'))return;onDel();save();render()}closeDlg();if(v==='cancel'&&onCancel)onCancel()};openDlg()}
+let lastBtn='';document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('#frm button');if(b)lastBtn=b.value||''},true);
+function openDlg(){lastBtn='';const d=$('#dlg');if(d.showModal)d.showModal();else{d.setAttribute('open','');d.style.cssText='position:fixed;top:5vh;left:3vw;z-index:20;max-height:90vh;overflow:auto;box-shadow:0 0 0 100vmax #0006'}}
+function closeDlg(){const d=$('#dlg');if(d.close&&d.open)d.close();else d.removeAttribute('open')}
+const F=(n,l,v,t='text',x='')=>`<label>${l}<input name="${n}" type="${t}" value="${esc(v)}" ${x}></label>`,S=(n,l,o,v)=>`<label>${l}<select name="${n}">${o.map(x=>`<option ${x===v?'selected':''}>${x}</option>`).join('')}</select></label>`;
+function entryForm(e,kind){if(!D.cur){alert('Add a vehicle first');tab='veh';render();return}
+if(!e&&!kind){$('#frm').innerHTML=`<h2>Add entry</h2><div style="display:grid;gap:8px">${['fuel','service','expense'].map(k=>`<button type="button" class="btn" data-k="${k}">${{fuel:'⛽ Fuel fill-up',service:'🔧 Service / maintenance',expense:'💳 Expense'}[k]}</button>`).join('')}<button class="btn2" value="cancel">Cancel</button></div>`;
+$('#frm').onsubmit=ev=>{ev.preventDefault();closeDlg()};openDlg();document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{closeDlg();entryForm(null,b.dataset.k)});return}
+e=e||{kind,date:today(),full:true};const k=e.kind;let h=`<h2>${k==='fuel'?'Fuel fill-up':k==='service'?'Service / maintenance':'Expense'}</h2>`+F('date','Date',e.date,'date','required')+F('odo','Odometer (km)',e.odo,'number','min=0 step=1 inputmode=numeric');
+if(k==='fuel')h+=F('litres','Litres',e.litres,'number','required step=0.01 min=0 inputmode=decimal')+F('price','Price per litre (N$)',e.price,'number','required step=0.01 min=0 inputmode=decimal')+`<label><input type="checkbox" name="full" ${e.full?'checked':''} style="width:auto"> Full tank (needed for L/100km)</label>`+F('workshop','Station',e.workshop);
+else h+=S('type','Type',k==='service'?STYPES:ETYPES,e.type)+F('cost','Cost (N$)',e.cost,'number','required step=0.01 min=0 inputmode=decimal')+(k==='service'?F('workshop','Workshop',e.workshop):'');
+h+=`<label>Notes<textarea name="notes" rows="2">${esc(e.notes)}</textarea></label>`;
+form(h,f=>{Object.assign(e,f,{full:!!f.full});if(!e.id){e.id=uid();e.v=D.cur;D.entries.push(e)}},e.id&&(()=>D.entries=D.entries.filter(x=>x.id!==e.id)))}
+function remForm(r){r=r||{};form(`<h2>Reminder</h2>`+F('title','Title',r.title||'','text','required')+S('type','Matches service type',STYPES,r.type)+F('km','Every (km)',r.km,'number','min=0')+F('months','Every (months)',r.months,'number','min=0')+F('lastDate','Last done date (optional override)',r.lastDate,'date')+F('lastOdo','Last done odometer (optional)',r.lastOdo,'number')+F('note','Note',r.note),
+f=>{Object.assign(r,f);if(!r.id){r.id=uid();r.v=D.cur;D.reminders.push(r)}},r.id&&(()=>D.reminders=D.reminders.filter(x=>x.id!==r.id)))}
+function vehForm(v){const n=!v;v=v||{};form(`<h2>Vehicle</h2>`+F('name','Name',v.name||'','text','required')+F('reg','Registration',v.reg)+F('year','Year',v.year)+F('defL100','Default L/100km (used until fuel fill-ups give an average)',v.defL100,'number','step=0.1 min=0')+F('defPrice','Default diesel price N$/L (used until a fill-up is logged)',v.defPrice,'number','step=0.01 min=0')+(v.defNote?`<p class="muted">${esc(v.defNote)}</p>`:'')+`<label>Notes<textarea name="notes">${esc(v.notes)}</textarea></label>`+(n?'':`<button type="button" class="btn2" id="mk" style="margin-top:8px">Make current</button>`),
+f=>{Object.assign(v,f);if(!v.id){v.id=uid();D.vehicles.push(v);D.cur=v.id}},v.id&&(()=>{D.vehicles=D.vehicles.filter(x=>x.id!==v.id);D.entries=D.entries.filter(x=>x.v!==v.id);D.reminders=D.reminders.filter(x=>x.v!==v.id);D.cur=D.vehicles[0]?D.vehicles[0].id:null}));
+$('#mk')&&($('#mk').onclick=()=>{D.cur=v.id;save();closeDlg();render()})}
+// ===== Trips =====
+function migrate(){D.entries=D.entries||[];D.reminders=D.reminders||[];D.trips=D.trips||[];if(D.running===undefined)D.running=null;
+D.vehicles.forEach(v=>{if(v.defL100===undefined){v.defL100=/mu-?x/i.test(v.name)?9.5:'';if(v.defL100)v.defNote='Default 9.5 L/100km is an estimate until fuel fill-ups are logged'}if(v.defPrice===undefined)v.defPrice=''})}
+migrate();save();
+const pad=n=>String(n).padStart(2,'0'),fmtT=ms=>{const d=new Date(ms);return pad(d.getHours())+':'+pad(d.getMinutes())},fmtD=ms=>{const d=new Date(ms);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())};
+const dur=ms=>{const m=Math.max(0,Math.round(ms/60000));return Math.floor(m/60)+'h '+pad(m%60)+'m'};
+const toLocal=ms=>fmtD(ms)+'T'+fmtT(ms);
+function curV(){return D.vehicles.find(v=>v.id===D.cur)||{}}
+function estRate(vid){const save=D.cur;D.cur=vid;const fs=fuelStats(),fu=ent().filter(e=>e.kind==='fuel'&&+e.price);D.cur=save;const v=D.vehicles.find(x=>x.id===vid)||{};
+return{l100:fs.avg||(+v.defL100||0),l100src:fs.avg?'fuel log':'default',price:fu.length?+fu[0].price:(+v.defPrice||0),pricesrc:fu.length?'last fill-up':'default'}}
+function est(t){const r=estRate(t.v),l=(+t.km||0)*r.l100/100;return{l,c:r.price?l*r.price:null,r}}
+let watchId=null,wake=null,tick=null,lastPos=null,lastSaveT=0;
+function hav(a,b){const R=6371,dl=(b.latitude-a.latitude)*Math.PI/180,dn=(b.longitude-a.longitude)*Math.PI/180,x=Math.sin(dl/2)**2+Math.cos(a.latitude*Math.PI/180)*Math.cos(b.latitude*Math.PI/180)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
+function startGPS(){if(watchId!==null||!navigator.geolocation||!D.running||!D.running.gps)return;lastPos=null;
+watchId=navigator.geolocation.watchPosition(p=>{const R=D.running;if(!R||R.ending)return;const c=p.coords;if(c.accuracy>60)return;if(lastPos){const d=hav(lastPos,c);if(d*1000<Math.max(10,c.accuracy))return;R.gpsKm=(R.gpsKm||0)+d}lastPos={latitude:c.latitude,longitude:c.longitude};R.gpsStatus='ok';if(Date.now()-lastSaveT>5000){lastSaveT=Date.now();save()}liveUpd()},
+e=>{if(D.running){D.running.gpsStatus='GPS error: '+e.message;liveUpd()}},{enableHighAccuracy:true,maximumAge:5000,timeout:30000})}
+function stopGPS(){if(watchId!==null&&navigator.geolocation)navigator.geolocation.clearWatch(watchId);watchId=null}
+async function lockOn(){try{if('wakeLock' in navigator&&!wake){wake=await navigator.wakeLock.request('screen');wake.addEventListener('release',()=>{wake=null})}}catch(e){}}
+function lockOff(){try{if(wake)wake.release()}catch(e){}wake=null}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&D.running&&!D.running.ending)lockOn()});
+function toast(m){const t=document.createElement('div');t.textContent=m;t.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:90px;background:#0f172a;color:#fff;padding:10px 14px;border-radius:10px;z-index:30;font-size:14px;max-width:90vw';document.body.appendChild(t);setTimeout(()=>t.remove(),3500)}
+function startTrip(gps){if(!D.cur){toast('Add a vehicle first');return false}if(D.running){toast('A trip is already running');return false}
+D.running={v:D.cur,start:Date.now(),startOdo:maxOdo()||'',gps:gps!==false&&!!navigator.geolocation,gpsKm:0,gpsStatus:'waiting for GPS…'};save();startGPS();lockOn();toast('Trip started');return true}
+function endTrip(){const R=D.running;if(!R){toast('No trip is running');return}if(!R.ending){R.ending=Date.now();save()}stopGPS();lockOff();endForm()}
+function endForm(){const R=D.running;if(!R)return;const gk=Math.round((R.gpsKm||0)*10)/10;
+const prefOdo=R.startOdo!==''?Math.round(+R.startOdo+gk):'';
+form(`<h2>End trip</h2><p class="muted">${fmtD(R.start)} ${fmtT(R.start)} → ${fmtT(R.ending)} (${dur(R.ending-R.start)})${R.gps?' · GPS '+gk+' km':''}</p>`+
+S('use','Personal or company use? *',['','Personal','Company'],'').replace('<select','<select required')+F('startOdo','Start odometer (km)',R.startOdo,'number','min=0')+F('endOdo','End odometer (km)',prefOdo,'number','min=0')+
+(R.gps?S('kmSource','Use km from',['GPS','Odometer'],'GPS'):'')+F('purpose','Purpose / destination',''),
+f=>{const so=+f.startOdo||0,eo=+f.endOdo||0,src=(f.kmSource||'Odometer');const km=src==='GPS'?gk:(eo>so&&so?eo-so:gk);
+D.trips.push({id:uid(),v:R.v,start:R.start,end:R.ending,startOdo:f.startOdo,endOdo:f.endOdo,gpsKm:R.gps?gk:'',kmSource:src,km:Math.round(km*10)/10,use:f.use,purpose:f.purpose,notes:''});D.running=null;toast('Trip saved')},
+null,()=>{toast('Trip not saved yet — tap "Finish trip" on the Trips tab');render()});kmLive(R.gps?gk:null)}
+function tripForm(t){form(`<h2>Edit trip</h2>`+F('start','Start',toLocal(t.start),'datetime-local','required')+F('end','End',toLocal(t.end),'datetime-local','required')+S('use','Use *',['Personal','Company'],t.use)+F('startOdo','Start odometer',t.startOdo,'number')+F('endOdo','End odometer',t.endOdo,'number')+F('km','Km driven',t.km,'number','step=0.1 min=0 required')+F('purpose','Purpose / destination',t.purpose)+`<label>Notes<textarea name="notes">${esc(t.notes)}</textarea></label>`,
+f=>{t.start=new Date(f.start).getTime();t.end=new Date(f.end).getTime();t.use=f.use;t.startOdo=f.startOdo;t.endOdo=f.endOdo;t.km=+f.km;t.purpose=f.purpose;t.notes=f.notes;t.kmSource='Manual'},()=>{D.trips=D.trips.filter(x=>x.id!==t.id)})}
+let tf={use:'all',from:'',to:''};
+function liveUpd(){const el=$('#live');const R=D.running;if(!el||!R)return;const end=R.ending||Date.now();
+el.innerHTML=`<div class="grid"><div class="stat"><b>${dur(end-R.start)}</b><span>Elapsed (since ${fmtT(R.start)})</span></div><div class="stat"><b>${R.gps?(R.gpsKm||0).toFixed(1)+' km':'off'}</b><span>GPS distance${R.gps?' · '+esc(R.gpsStatus||''):''}</span></div></div>`}
+function trips(){const R=D.running&&D.running.v===D.cur?D.running:null,r=estRate(D.cur);
+let h=`<div class="card"><h2>${R?(R.ending?'🏁 Trip ended — please classify':'🟢 Trip running'):'Trip'}</h2>`;
+if(R)h+=`<div id="live"></div><p class="muted">Start odometer: ${R.startOdo?(+R.startOdo).toLocaleString()+' km':'not set'}. ${R.gps&&!R.ending?'Keep this page open with the screen on for GPS to count.':''}</p><button class="btn" id="tEnd" style="width:100%;padding:14px">${R.ending?'Finish trip':'⏹ End trip'}</button>`;
+else if(D.running)h+=`<p>A trip is running on another vehicle (${esc((D.vehicles.find(v=>v.id===D.running.v)||{}).name)}).</p>`;
+else h+=`<label><input type="checkbox" id="tGps" checked style="width:auto"> Track distance with GPS</label><button class="btn" id="tStart" style="width:100%;padding:14px;margin-top:8px">▶ Start trip</button>`;
+h+=`<p class="muted">Diesel estimate: ${r.l100?r.l100.toFixed(1)+' L/100km ('+r.l100src+')':'<b>no consumption set</b>'} · ${r.price?N(r.price)+'/L ('+r.pricesrc+')':'<b class="due">no diesel price set — add a fill-up or set a default price on the Vehicles tab</b>'}</p></div>`;
+const T=D.trips.filter(t=>t.v===D.cur&&(tf.use==='all'||t.use===tf.use)&&(!tf.from||fmtD(t.start)>=tf.from)&&(!tf.to||fmtD(t.start)<=tf.to)).sort((a,b)=>b.start-a.start);
+const tot={Personal:{km:0,ms:0,l:0,c:0,n:0},Company:{km:0,ms:0,l:0,c:0,n:0}};T.forEach(t=>{const o=tot[t.use]||tot.Personal,e=est(t);o.km+=+t.km||0;o.ms+=t.end-t.start;o.l+=e.l;o.c+=e.c||0;o.n++});
+h+=`<div class="filters"><select id="tfU">${['all','Personal','Company'].map(k=>`<option ${tf.use===k?'selected':''}>${k}</option>`).join('')}</select><input type="date" id="tfF" value="${tf.from}" aria-label="From"><input type="date" id="tfT" value="${tf.to}" aria-label="To"></div>`;
+h+=`<div class="card"><h2>Totals (estimated diesel)</h2><div class="grid">${['Personal','Company'].map(k=>`<div class="stat"><span>${k} · ${tot[k].n} trips</span><b>${tot[k].km.toFixed(1)} km</b><span>${dur(tot[k].ms)} · ~${tot[k].l.toFixed(1)} L · ~${N(tot[k].c)}</span></div>`).join('')}</div><p><button class="btn2" id="tCsv">Export trips CSV (logbook)</button></p></div>`;
+h+=`<div class="card"><h2>Trips</h2>${T.map(t=>{const e=est(t);return`<div class="row" data-tid="${t.id}"><div><span class="tag ${t.use==='Company'?'service':'expense'}">${esc(t.use)}</span> <b>${(+t.km).toFixed(1)} km</b><div class="muted">${fmtD(t.start)} ${fmtT(t.start)}–${fmtT(t.end)} (${dur(t.end-t.start)})${t.startOdo?' · '+t.startOdo+'→'+(t.endOdo||'?'):''}</div>${t.purpose?`<div class="muted">${esc(t.purpose)}</div>`:''}</div><div style="text-align:right"><b>${e.c!=null?'~'+N(e.c):'—'}</b><div class="muted">~${e.l.toFixed(1)} L est.</div></div></div>`}).join('')||'<p class="muted">No trips yet.</p>'}</div>`;
+return h}
+function bindTrips(){if($('#tStart'))$('#tStart').onclick=()=>{startTrip($('#tGps').checked);render()};if($('#tEnd'))$('#tEnd').onclick=endTrip;
+document.querySelectorAll('[data-tid]').forEach(r=>r.onclick=()=>tripForm(D.trips.find(t=>t.id===r.dataset.tid)));
+if($('#tfU')){$('#tfU').onchange=e=>{tf.use=e.target.value;render()};$('#tfF').onchange=e=>{tf.from=e.target.value;render()};$('#tfT').onchange=e=>{tf.to=e.target.value;render()};
+$('#tCsv').onclick=()=>{const c=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"',vn=id=>(D.vehicles.find(v=>v.id===id)||{}).name;
+dl('trips-'+today()+'.csv',['vehicle,date,start_time,end_time,duration_min,odometer_start,odometer_end,km,km_source,use,purpose,notes,est_litres,est_cost_nad'].concat(D.trips.slice().sort((a,b)=>a.start-b.start).map(t=>{const e=est(t);return[vn(t.v),fmtD(t.start),fmtT(t.start),fmtT(t.end),Math.round((t.end-t.start)/60000),t.startOdo,t.endOdo,t.km,t.kmSource,t.use,t.purpose,t.notes,e.l.toFixed(2),e.c!=null?e.c.toFixed(2):''].map(c).join(',')})).join('\n'),'text/csv')}}
+liveUpd()}
+clearInterval(tick);tick=setInterval(liveUpd,1000);
+function hook(){let a='';const h=(location.hash||'').toLowerCase(),q=(location.search||'').toLowerCase();
+if(h.indexOf('trip-start')>=0||q.indexOf('trip=start')>=0)a='start';else if(h.indexOf('trip-end')>=0||q.indexOf('trip=end')>=0)a='end';if(!a)return;
+try{history.replaceState(null,'',location.pathname)}catch(e){}tab='trips';
+if(a==='start'){if(D.running)toast('Trip already running');else startTrip(true)}else{if(D.running)setTimeout(endTrip,50);else toast('No trip running')}render()}
+window.addEventListener('hashchange',hook);
+
+// ===== Home-based trips (v3) =====
+function migrate(){D.entries=D.entries||[];D.reminders=D.reminders||[];D.trips=D.trips||[];if(D.running===undefined)D.running=null;if(D.home===undefined)D.home=null;fixKm();if(D.running&&!D.running.track)D.running.track=[];
+D.vehicles.forEach(v=>{if(v.defL100===undefined){v.defL100=/mu-?x/i.test(v.name)?9.5:'';if(v.defL100)v.defNote='Default 9.5 L/100km is an estimate until fuel fill-ups are logged'}if(v.defPrice===undefined)v.defPrice=''});
+const R=D.running;if(R){R.legs=R.legs||[];R.stops=R.stops||[];if(R.legStart===undefined){R.legStart=R.start;R.legKm0=0}if(R.paused===undefined)R.paused=false}}
+const distM=(a,b)=>hav({latitude:+a.lat,longitude:+a.lon},{latitude:+b.lat,longitude:+b.lon})*1000;
+function getPos(){return new Promise(res=>{if(!navigator.geolocation)return res(null);let done=false;const t=setTimeout(()=>{if(!done){done=true;res(null)}},15000);
+navigator.geolocation.getCurrentPosition(p=>{if(done)return;done=true;clearTimeout(t);res({lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy})},()=>{if(done)return;done=true;clearTimeout(t);res(null)},{enableHighAccuracy:true,timeout:14000,maximumAge:20000})})}
+function closeLeg(R,now){if(R.paused)return;R.legs.push({start:R.legStart,end:now,km:Math.round(((R.gpsKm||0)-(R.legKm0||0))*10)/10})}
+const driveMs=x=>(x.legs||[]).reduce((s,l)=>s+(l.end-l.start),0)+(x.paused||x.ending||!x.legStart?0:Date.now()-x.legStart);
+function startTrip(gps){if(!D.cur){toast('Add a vehicle first');return false}const R=D.running;
+if(R){if(R.ending){toast('Trip is waiting to be finished');return false}if(!R.paused){toast('Trip already running');return false}
+const now=Date.now();R.paused=false;R.legStart=now;R.legKm0=R.gpsKm||0;const s=R.stops[R.stops.length-1];if(s)s.resumed=now;save();startGPS();lockOn();toast('Trip resumed (leg '+(R.legs.length+1)+')');return true}
+const now=Date.now();D.running={v:D.cur,start:now,startOdo:maxOdo()||'',gps:gps!==false&&!!navigator.geolocation,gpsKm:0,gpsStatus:'waiting for GPS…',legs:[],stops:[],legStart:now,legKm0:0,paused:false};save();startGPS();lockOn();toast('Trip started');return true}
+function pauseTrip(pos){const R=D.running;if(!R)return;const now=Date.now();if(!R.paused){closeLeg(R,now);R.paused=true;R.stops.push({at:now,lat:pos?pos.lat:'',lon:pos?pos.lon:'',resumed:''})}stopGPS();lockOff();save();toast('Stop recorded — trip paused');render()}
+function closeTrip(){const R=D.running;if(!R)return;const now=Date.now();if(!R.paused){closeLeg(R,now);R.ending=now}else{const s=R.stops.pop();R.ending=s?s.at:now}R.paused=true;stopGPS();lockOff();save();endForm()}
+let ending=false;
+async function endTrip(force){const R=D.running;if(!R){toast('No trip is running');return}if(R.ending){endForm();return}
+if(force==='home')return closeTrip();if(force==='stop')return pauseTrip(R.paused?null:await getPos());
+if(ending)return;ending=true;try{const pos=D.home?await getPos():null;
+if(D.home&&pos){const d=distM(pos,D.home);if(d<=(+D.home.r||300))closeTrip();else pauseTrip(pos);return}
+form(`<h2>Are you home?</h2><p class="muted">${D.home?'Could not get a GPS fix.':'No home location is set (More tab → Home).'}</p>`,()=>{setTimeout(closeTrip,0)},null,()=>{pauseTrip(pos)});
+$('#frm').querySelector('button[value=save]').textContent='Yes — end trip';$('#frm').querySelector('button[value=cancel]').textContent='No — just a stop'}finally{ending=false}}
+function endForm(){const R=D.running;if(!R||!R.ending)return;const gk=Math.round((R.gpsKm||0)*10)/10,dm=driveMs(R);
+const prefOdo=R.startOdo!==''?Math.round(+R.startOdo+gk):'';
+form(`<h2>Trip home — finish</h2><p class="muted">${fmtD(R.start)} ${fmtT(R.start)} → ${fmtT(R.ending)} · driving ${dur(dm)} · elapsed ${dur(R.ending-R.start)} · ${R.legs.length} legs, ${R.stops.length} stops${R.gps?' · GPS '+gk+' km':''}</p>`+
+S('use','Personal or company use? *',['','Personal','Company'],'').replace('<select','<select required')+F('startOdo','Start odometer (km)',R.startOdo,'number','min=0')+F('endOdo','End odometer (km)',prefOdo,'number','min=0')+
+(R.gps?S('kmSource','Use km from',['GPS','Odometer'],'GPS'):'')+F('km','Km driven',gk||'','number','step=0.1 min=0')+F('purpose','Purpose / destination',''),
+f=>{const src=(f.kmSource||'Odometer');const km=finalKm(f,src==='GPS'?gk:null);
+D.trips.push({id:uid(),v:R.v,start:R.start,end:R.ending,driveMs:dm,legs:R.legs,stops:R.stops,track:R.track||[],startOdo:f.startOdo,endOdo:f.endOdo,gpsKm:R.gps?gk:'',kmSource:src,km:Math.round(km*10)/10,use:f.use,purpose:f.purpose,notes:''});D.running=null;checkStore();toast('Trip saved')},
+null,()=>{toast('Trip not saved yet — tap "Finish trip" on the Trips tab');render()});kmLive(R.gps?gk:null)}
+const stopTxt=s=>fmtT(s.at)+'–'+(s.resumed?fmtT(s.resumed):'?')+(s.lat!==''&&s.lat!=null?' @ '+(+s.lat).toFixed(5)+','+(+s.lon).toFixed(5):'');
+const tDur=t=>t.driveMs!=null?t.driveMs:t.end-t.start;
+function tripForm(t){form(`<h2>Edit trip</h2>${(t.stops||[]).length?`<p class="muted"><b>Stops:</b><br>${t.stops.map(s=>esc(stopTxt(s))+(s.lat!==''?` <a href="https://maps.google.com/?q=${s.lat},${s.lon}" target="_blank">map</a>`:'')).join('<br>')}</p>`:''}<p class="muted">Driving ${dur(tDur(t))} · elapsed ${dur(t.end-t.start)}</p>${trackHtml(t)}`+F('start','Start',toLocal(t.start),'datetime-local','required')+F('end','End',toLocal(t.end),'datetime-local','required')+S('use','Use *',['Personal','Company'],t.use)+F('startOdo','Start odometer',t.startOdo,'number')+F('endOdo','End odometer',t.endOdo,'number')+F('km','Km driven',t.km,'number','step=0.1 min=0 required')+F('purpose','Purpose / destination',t.purpose)+`<label>Notes<textarea name="notes">${esc(t.notes)}</textarea></label>`,
+f=>{const ns=new Date(f.start).getTime(),ne=new Date(f.end).getTime();if(ns!==t.start||ne!==t.end){if(!t.legs||t.legs.length<2)t.driveMs=ne-ns}t.start=ns;t.end=ne;t.use=f.use;t.startOdo=f.startOdo;t.endOdo=f.endOdo;const nk=finalKm(f,null);if(nk!==+t.km&&$('#frm [name=km]').dataset.manual)t.kmSource='Manual';else if(nk!==+t.km)t.kmSource='Odometer';t.km=nk;t.purpose=f.purpose;t.notes=f.notes},()=>{D.trips=D.trips.filter(x=>x.id!==t.id)});kmLive(null);const gb=$('#gpxBtn');if(gb)gb.onclick=()=>dl('trip-'+fmtD(t.start)+'-'+fmtT(t.start).replace(':','')+'.gpx',gpx(t),'application/gpx+xml')}
+function liveUpd(){const el=$('#live');const R=D.running;if(!el||!R)return;const end=R.ending||Date.now();
+el.innerHTML=`<div class="grid"><div class="stat"><b>${dur(driveMs(R))}</b><span>Driving · elapsed ${dur(end-R.start)}</span></div><div class="stat"><b>${R.gps?(R.gpsKm||0).toFixed(1)+' km':'off'}</b><span>GPS distance${R.gps&&!R.paused?' · '+esc(R.gpsStatus||''):''}</span></div>${R.gps&&!R.paused?`<div class="stat"><b>${R.curKmh!=null?Math.round(R.curKmh)+' km/h':'—'}</b><span>Speed now</span></div><div class="stat"><b>${(R.track||[]).length}</b><span>Track points</span></div>`:''}</div>${R.stops.length?`<p class="muted">Stops: ${R.stops.map(s=>esc(stopTxt(s))).join(' · ')}</p>`:''}`}
+function trips(){const R=D.running&&D.running.v===D.cur?D.running:null,r=estRate(D.cur);
+let h=`<div class="card"><h2>${R?(R.ending?'🏁 Home — please classify':R.paused?'⏸ Trip paused at a stop':'🟢 Trip running (leg '+(R.legs.length+1)+')'):'Trip'}</h2>`;
+if(!D.home)h+=`<p class="due">No home set — trips can't auto-detect home. Set it on the More tab.</p>`;
+if(R){h+=`<div id="live"></div><p class="muted">Start odometer: ${R.startOdo?(+R.startOdo).toLocaleString()+' km':'not set'}. ${R.gps&&!R.paused?'Keep this page open with the screen on for GPS to count.':''}</p>`;
+h+=R.ending?`<button class="btn" id="tFin" style="width:100%;padding:14px">Finish trip</button>`:`<div style="display:flex;gap:8px">${R.paused?'<button class="btn" id="tRes" style="flex:1;padding:14px">▶ Resume</button>':'<button class="btn2" id="tStop" style="flex:1;padding:14px">⏸ Stop here</button>'}<button class="btn" id="tHome" style="flex:1;padding:14px">🏠 End at home</button></div>`}
+else if(D.running)h+=`<p>A trip is running on another vehicle (${esc((D.vehicles.find(v=>v.id===D.running.v)||{}).name)}).</p>`;
+else h+=`<label style="font-size:15px;color:#0f172a"><input type="checkbox" id="tGps" checked style="width:auto"> 📡 Record GPS track (speed curve, route & km)</label><p class="muted" id="gpsPerm"></p><button class="btn" id="tStart" style="width:100%;padding:14px;margin-top:8px">▶ Start trip from home</button>`;
+h+=`<p class="muted">Diesel estimate: ${r.l100?r.l100.toFixed(1)+' L/100km ('+r.l100src+')':'<b>no consumption set</b>'} · ${r.price?N(r.price)+'/L ('+r.pricesrc+')':'<b class="due">no diesel price set — add a fill-up or set a default price on the Vehicles tab</b>'}</p></div>`;
+const T=D.trips.filter(t=>t.v===D.cur&&(tf.use==='all'||t.use===tf.use)&&(!tf.from||fmtD(t.start)>=tf.from)&&(!tf.to||fmtD(t.start)<=tf.to)).sort((a,b)=>b.start-a.start);
+const tot={Personal:{km:0,ms:0,l:0,c:0,n:0},Company:{km:0,ms:0,l:0,c:0,n:0}};T.forEach(t=>{const o=tot[t.use]||tot.Personal,e=est(t);o.km+=+t.km||0;o.ms+=tDur(t);o.l+=e.l;o.c+=e.c||0;o.n++});
+h+=`<div class="filters"><select id="tfU">${['all','Personal','Company'].map(k=>`<option ${tf.use===k?'selected':''}>${k}</option>`).join('')}</select><input type="date" id="tfF" value="${tf.from}" aria-label="From"><input type="date" id="tfT" value="${tf.to}" aria-label="To"></div>`;
+h+=`<div class="card"><h2>Totals (estimated diesel)</h2><div class="grid">${['Personal','Company'].map(k=>`<div class="stat"><span>${k} · ${tot[k].n} trips</span><b>${tot[k].km.toFixed(1)} km</b><span>${dur(tot[k].ms)} driving · ~${tot[k].l.toFixed(1)} L · ~${N(tot[k].c)}</span></div>`).join('')}</div><p><button class="btn2" id="tCsv">Export trips CSV (logbook)</button></p></div>`;
+h+=`<div class="card"><h2>Trips</h2>${T.map(t=>{const e=est(t),ns=(t.stops||[]).length;return`<div class="row" data-tid="${t.id}"><div><span class="tag ${t.use==='Company'?'service':'expense'}">${esc(t.use)}</span> <b>${(+t.km).toFixed(1)} km</b><div class="muted">${fmtD(t.start)} ${fmtT(t.start)}–${fmtT(t.end)} · ${dur(tDur(t))} driving${ns?' · '+ns+' stop'+(ns>1?'s':''):''}${t.startOdo?' · '+t.startOdo+'→'+(t.endOdo||'?'):''}</div>${t.purpose?`<div class="muted">${esc(t.purpose)}</div>`:''}</div><div style="text-align:right"><b>${e.c!=null?'~'+N(e.c):'—'}</b><div class="muted">~${e.l.toFixed(1)} L est.</div></div></div>`}).join('')||'<p class="muted">No trips yet.</p>'}</div>`;
+return h}
+function bindTrips(){if($('#tStart'))$('#tStart').onclick=()=>{const g=$('#tGps').checked;if(g&&navigator.geolocation)navigator.geolocation.getCurrentPosition(()=>{},e=>{if(e.code===1)alert('Location is blocked. In Chrome tap the lock/info icon → Permissions → Location → Allow, then try again.')},{enableHighAccuracy:true,timeout:15000});startTrip(g);render()};if($('#gpsPerm')&&navigator.permissions)navigator.permissions.query({name:'geolocation'}).then(r=>{const el=$('#gpsPerm');if(el)el.textContent=r.state==='denied'?'⚠️ Location is blocked for this page — allow it in Chrome site settings.':r.state==='prompt'?'Chrome will ask for location permission when you start.':'Location allowed. GPS records only while this page is open and the screen is on.'}).catch(()=>{});if($('#tRes'))$('#tRes').onclick=()=>{startTrip();render()};
+if($('#tStop'))$('#tStop').onclick=()=>endTrip('stop');if($('#tHome'))$('#tHome').onclick=()=>endTrip('home');if($('#tFin'))$('#tFin').onclick=endForm;
+document.querySelectorAll('[data-tid]').forEach(r=>r.onclick=()=>tripForm(D.trips.find(t=>t.id===r.dataset.tid)));
+if($('#tfU')){$('#tfU').onchange=e=>{tf.use=e.target.value;render()};$('#tfF').onchange=e=>{tf.from=e.target.value;render()};$('#tfT').onchange=e=>{tf.to=e.target.value;render()};
+$('#tCsv').onclick=()=>{const c=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"',vn=id=>(D.vehicles.find(v=>v.id===id)||{}).name;
+dl('trips-'+today()+'.csv',['vehicle,date,start_time,end_time,driving_min,elapsed_min,legs,stops,odometer_start,odometer_end,km,km_source,use,purpose,notes,est_litres,est_cost_nad'].concat(D.trips.slice().sort((a,b)=>a.start-b.start).map(t=>{const e=est(t);return[vn(t.v),fmtD(t.start),fmtT(t.start),fmtT(t.end),Math.round(tDur(t)/60000),Math.round((t.end-t.start)/60000),(t.legs||[]).length||1,(t.stops||[]).map(stopTxt).join('; '),t.startOdo,t.endOdo,t.km,t.kmSource,t.use,t.purpose,t.notes,e.l.toFixed(2),e.c!=null?e.c.toFixed(2):''].map(c).join(',')})).join('\n'),'text/csv')}}
+const hb=$('#hSet');if(hb){hb.onclick=async()=>{hb.textContent='Getting GPS…';const p=await getPos();if(!p){hb.textContent='📍 Set home to my current location';alert('Could not get your location. Allow location for Chrome, or type lat/lon.');return}$('#hLat').value=p.lat.toFixed(6);$('#hLon').value=p.lon.toFixed(6);saveHome();toast('Home set (±'+Math.round(p.acc)+' m)')};
+$('#hSave').onclick=saveHome;if($('#hClr'))$('#hClr').onclick=()=>{D.home=null;save();render()}}
+liveUpd()}
+function saveHome(){const la=parseFloat($('#hLat').value),lo=parseFloat($('#hLon').value),r=parseFloat($('#hR').value)||300;if(isNaN(la)||isNaN(lo)||Math.abs(la)>90||Math.abs(lo)>180){alert('Enter a valid latitude and longitude');return}D.home={lat:la,lon:lo,r:r};save();render()}
+function homeCard(){const H=D.home||{};return`<div class="card"><h2>🏠 Home</h2><p class="muted">Trips start and end at home. A "trip end" signal away from home only records a stop; within the radius it closes the trip.</p>${D.home?`<p>Home: ${(+H.lat).toFixed(5)}, ${(+H.lon).toFixed(5)} · radius ${H.r} m · <a href="https://maps.google.com/?q=${H.lat},${H.lon}" target="_blank">map</a></p>`:'<p class="due">Not set yet.</p>'}
+<button class="btn" id="hSet" style="width:100%">📍 Set home to my current location</button><div class="grid"><label>Latitude<input id="hLat" inputmode="decimal" value="${H.lat!=null?H.lat:''}" placeholder="-22.6784"></label><label>Longitude<input id="hLon" inputmode="decimal" value="${H.lon!=null?H.lon:''}" placeholder="14.5266"></label></div><label>Radius (m)<input id="hR" type="number" min="50" value="${H.r||300}"></label><p style="display:flex;gap:8px"><button class="btn2" id="hSave">Save</button>${D.home?'<button class="del" id="hClr">Clear</button>':''}</p></div>`}
+function hook(){let a='';const h=(location.hash||'').toLowerCase(),q=(location.search||'').toLowerCase();
+if(h.indexOf('trip-start')>=0||q.indexOf('trip=start')>=0)a='start';else if(h.indexOf('trip-end')>=0||q.indexOf('trip=end')>=0)a='end';if(!a)return;
+try{history.replaceState(null,'',location.pathname)}catch(e){}tab='trips';
+if(a==='start')startTrip(true);else{if(D.running)setTimeout(()=>endTrip(),50);else toast('No trip running')}render()}
+
+function odoDiff(a,b){const so=parseFloat(a),eo=parseFloat(b);return(!isNaN(so)&&!isNaN(eo)&&so>0&&eo>=so)?Math.round((eo-so)*10)/10:null}
+function finalKm(f,gpsKm){const k=parseFloat(f.km),d=odoDiff(f.startOdo,f.endOdo),man=$('#frm [name=km]')&&$('#frm [name=km]').dataset.manual;
+if(d!=null&&d>0&&(isNaN(k)||k===0))return d;if(man&&!isNaN(k))return Math.round(k*10)/10;if(isNaN(k)&&gpsKm)return gpsKm;return isNaN(k)?0:Math.round(k*10)/10}
+function kmLive(gpsKm){const fm=$('#frm'),km=fm.querySelector('[name=km]'),so=fm.querySelector('[name=startOdo]'),eo=fm.querySelector('[name=endOdo]'),src=fm.querySelector('[name=kmSource]');if(!km||!so||!eo)return;
+km.addEventListener('input',()=>{km.dataset.manual='1'});
+const upd=()=>{if(km.dataset.manual)return;if(src&&src.value==='GPS'&&gpsKm!=null){km.value=gpsKm;return}const d=odoDiff(so.value,eo.value);if(d!=null)km.value=d};
+so.addEventListener('input',upd);eo.addEventListener('input',upd);if(src)src.addEventListener('change',upd);
+if(!(parseFloat(km.value)>0))upd()}
+function fixKm(){let n=0;(D.trips||[]).forEach(t=>{if(!(+t.km>0)){const d=odoDiff(t.startOdo,t.endOdo);if(d!=null&&d>0){t.km=d;t.kmSource='Odometer';n++}}});return n}
+
+// ===== GPS track & speed (v4) =====
+let lastRaw=null,lastRec=null;
+function startGPS(){if(watchId!==null||!navigator.geolocation||!D.running||!D.running.gps)return;lastPos=null;lastRaw=null;lastRec=null;
+watchId=navigator.geolocation.watchPosition(p=>{const R=D.running;if(!R||R.ending||R.paused)return;const c=p.coords,now=p.timestamp||Date.now();R.track=R.track||[];
+let kmh=(c.speed!=null&&!isNaN(c.speed)&&c.speed>=0)?c.speed*3.6:null;
+if(kmh==null&&lastRaw){const dt=(now-lastRaw.t)/1000;if(dt>0)kmh=hav(lastRaw,c)*1000/dt*3.6}lastRaw={latitude:c.latitude,longitude:c.longitude,t:now};R.curKmh=kmh;
+if(c.accuracy>60){R.gpsStatus='weak GPS (±'+Math.round(c.accuracy)+' m)';liveUpd();return}
+if(lastPos){const d=hav(lastPos,c);if(d*1000>=Math.max(10,c.accuracy)){R.gpsKm=(R.gpsKm||0)+d;lastPos={latitude:c.latitude,longitude:c.longitude}}}else lastPos={latitude:c.latitude,longitude:c.longitude};
+if(!lastRec||now-lastRec.t>=5000||hav(lastRec,c)*1000>=25){R.track.push([now,+c.latitude.toFixed(6),+c.longitude.toFixed(6),kmh==null?null:Math.round(kmh*10)/10,Math.round(c.accuracy)]);lastRec={latitude:c.latitude,longitude:c.longitude,t:now};if(R.track.length>4000)R.track=thin(R.track)}
+R.gpsStatus='ok';if(Date.now()-lastSaveT>5000){lastSaveT=Date.now();save();checkStore()}liveUpd()},
+e=>{if(D.running){D.running.gpsStatus=e.code===1?'location permission denied — allow location for Chrome':'GPS error: '+e.message;liveUpd()}},{enableHighAccuracy:true,maximumAge:3000,timeout:30000})}
+function thin(tr){return tr.filter((p,i)=>i%2===0||i===tr.length-1)}
+function storeSize(){try{return JSON.stringify(D).length}catch(e){return 0}}
+function checkStore(){let n=storeSize(),guard=0;const LIM=3500000;
+while(n>LIM&&guard++<300){const old=D.trips.filter(t=>t.track&&t.track.length>50).sort((a,b)=>a.start-b.start)[0];if(!old)break;old.track=thin(old.track);old.thinned=true;n=storeSize()}
+if(guard>0)save();if(n>LIM)warn('⚠️ Storage almost full ('+(n/1e6).toFixed(1)+' MB). Export a backup and delete old trips.')}
+function trackStats(t){const tr=t.track||[];let mx=0,dist=0,mv=0;for(let i=1;i<tr.length;i++){const a=tr[i-1],b=tr[i],dt=(b[0]-a[0])/1000,d=hav({latitude:a[1],longitude:a[2]},{latitude:b[1],longitude:b[2]});const v=b[3]!=null?b[3]:(dt>0?d*3600/dt:0);if(v>mx)mx=v;if(v>3&&dt>0&&dt<120){mv+=dt;dist+=d}}
+return{max:mx,avg:mv?dist/(mv/3600):0,moving:mv*1000}}
+function speedSvg(t){const tr=(t.track||[]).filter(p=>p[3]!=null);if(tr.length<2)return'<p class="muted">No GPS speed data for this trip.</p>';
+const W=340,H=150,L=28,B=18,t0=t.start,t1=Math.max(t.end,tr[tr.length-1][0]),sp=t1-t0||1,mx=Math.max(20,Math.ceil(Math.max.apply(null,tr.map(p=>p[3]))/20)*20);
+const X=ms=>L+(ms-t0)/sp*(W-L-4),Y=v=>H-B-v/mx*(H-B-6);let g='';
+(t.stops||[]).forEach(s=>{const a=X(s.at),b=X(s.resumed||t1);g+=`<rect x="${a}" y="4" width="${Math.max(2,b-a)}" height="${H-B-4}" fill="#fde68a" opacity=".7"><title>Stop ${esc(stopTxt(s))}</title></rect>`});
+for(let v=0;v<=mx;v+=mx/4)g+=`<line x1="${L}" x2="${W-4}" y1="${Y(v)}" y2="${Y(v)}" stroke="#e2e8f0"/><text x="2" y="${Y(v)+3}" font-size="9" fill="#64748b">${Math.round(v)}</text>`;
+let path='',prev=null;tr.forEach(p=>{const gap=prev&&p[0]-prev[0]>120000;path+=(path===''||gap?'M':'L')+X(p[0]).toFixed(1)+','+Y(p[3]).toFixed(1)+' ';prev=p});
+return`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Speed over time">${g}<path d="${path}" fill="none" stroke="#0f766e" stroke-width="1.6"/><text x="${L}" y="${H-4}" font-size="9" fill="#64748b">${fmtT(t0)}</text><text x="${W-4}" y="${H-4}" font-size="9" fill="#64748b" text-anchor="end">${fmtT(t1)}</text><text x="${W/2}" y="${H-4}" font-size="9" fill="#64748b" text-anchor="middle">km/h · yellow = stops</text></svg>`}
+function routeSvg(t){const tr=t.track||[];if(tr.length<2)return'';const la=tr.map(p=>p[1]),lo=tr.map(p=>p[2]),mnA=Math.min.apply(null,la),mxA=Math.max.apply(null,la),mnO=Math.min.apply(null,lo),mxO=Math.max.apply(null,lo);
+const k=Math.cos((mnA+mxA)/2*Math.PI/180),W=340,H=220,P=10,sx=(mxO-mnO)*k||1e-6,sy=(mxA-mnA)||1e-6,sc=Math.min((W-2*P)/sx,(H-2*P)/sy);
+const pt=p=>[(P+(p[2]-mnO)*k*sc).toFixed(1),(H-P-(p[1]-mnA)*sc).toFixed(1)];const a=pt(tr[0]),b=pt(tr[tr.length-1]);
+const st=(t.stops||[]).filter(s=>s.lat!==''&&s.lat!=null).map(s=>{const q=pt([0,+s.lat,+s.lon]);return`<circle cx="${q[0]}" cy="${q[1]}" r="4" fill="#f59e0b"><title>Stop ${esc(stopTxt(s))}</title></circle>`}).join('');
+return`<svg viewBox="0 0 ${W} ${H}" style="background:#f8fafc;border-radius:8px"><polyline fill="none" stroke="#0f766e" stroke-width="2" points="${tr.map(p=>pt(p).join(',')).join(' ')}"/>${st}<circle cx="${a[0]}" cy="${a[1]}" r="5" fill="#16a34a"><title>Start</title></circle><circle cx="${b[0]}" cy="${b[1]}" r="5" fill="#dc2626"><title>End</title></circle></svg>`}
+function trackHtml(t){const tr=t.track||[];if(!tr.length)return'<p class="muted">No GPS track recorded for this trip.</p>';const s=trackStats(t),f=tr[0],l=tr[tr.length-1];
+return`<div class="grid"><div class="stat"><b>${s.max.toFixed(0)} km/h</b><span>Max speed</span></div><div class="stat"><b>${s.avg.toFixed(0)} km/h</b><span>Avg moving speed (${dur(s.moving)})</span></div></div><h2 style="margin-top:10px">Speed</h2>${speedSvg(t)}<h2>Route</h2>${routeSvg(t)}
+<p class="muted"><a href="https://www.google.com/maps/search/?api=1&query=${f[1]},${f[2]}" target="_blank">Start in Google Maps</a> · <a href="https://www.google.com/maps/search/?api=1&query=${l[1]},${l[2]}" target="_blank">End in Google Maps</a> · <a href="https://www.google.com/maps/dir/${f[1]},${f[2]}/${l[1]},${l[2]}" target="_blank">Directions</a></p>
+<button type="button" class="btn2" id="gpxBtn">Export GPX</button> <span class="muted">${tr.length} points${t.thinned?' (thinned to save space)':''}</span>`}
+function gpx(t){const x=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');const iso=ms=>new Date(ms).toISOString();
+return`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Vehicle Log" xmlns="http://www.topografix.com/GPX/1/1"><metadata><name>${x('Trip '+fmtD(t.start)+' '+fmtT(t.start))}</name><time>${iso(t.start)}</time></metadata>`+
+(t.stops||[]).filter(s=>s.lat!=='').map(s=>`<wpt lat="${s.lat}" lon="${s.lon}"><time>${iso(s.at)}</time><name>${x('Stop '+stopTxt(s))}</name></wpt>`).join('')+
+`<trk><name>${x((t.use||'')+' '+(t.purpose||''))}</name><trkseg>`+(t.track||[]).map(p=>`<trkpt lat="${p[1]}" lon="${p[2]}"><time>${iso(p[0])}</time>${p[3]!=null?`<extensions><speed>${(p[3]/3.6).toFixed(2)}</speed></extensions>`:''}</trkpt>`).join('')+`</trkseg></trk></gpx>`}
+
+function doImport(f){if(!f)return;f.text().then(t=>{try{const d=JSON.parse(t);if(!d.vehicles||!d.entries)throw 0;if(confirm('Replace all current data with this backup ('+d.vehicles.length+' vehicles, '+d.entries.length+' records, '+((d.trips||[]).length)+' trips)?')){d.reminders=d.reminders||[];delete d.firstRun;D=d;migrate();save();tab='dash';render();toast('Backup imported')}}catch(x){alert('Not a valid backup file')}})}
+function pickImport(){const i=document.createElement('input');i.type='file';i.accept='.json,application/json';i.onchange=()=>doImport(i.files[0]);i.click()}
+function firstRunBanner(){if(!D.firstRun)return'';return`<div class="card" style="border:2px solid #0f766e"><h2>👋 Moving from the old file?</h2><p class="muted">Your records in the old vehicle-log.html don't carry over automatically. In the old file: More → Export JSON backup. Then tap Import here.</p><div style="display:flex;gap:8px"><button class="btn" type="button" style="flex:1" onclick="pickImport()">Import backup</button><button class="btn2" type="button" onclick="D.firstRun=false;save();render()">Start fresh</button></div></div>`}
+// service worker + update toast
+if('serviceWorker' in navigator&&location.protocol!=='file:'){window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').then(reg=>{
+const ask=w=>{const t=document.createElement('div');t.innerHTML='New version available — <b>tap to update</b>';t.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:90px;background:#0f766e;color:#fff;padding:12px 16px;border-radius:10px;z-index:40;cursor:pointer';t.onclick=()=>{w.postMessage('SKIP_WAITING');t.remove()};document.body.appendChild(t)};
+if(reg.waiting&&navigator.serviceWorker.controller)ask(reg.waiting);
+reg.addEventListener('updatefound',()=>{const w=reg.installing;w.addEventListener('statechange',()=>{if(w.state==='installed'&&navigator.serviceWorker.controller)ask(w)})});
+setInterval(()=>reg.update().catch(()=>{}),3600000)}).catch(()=>{});
+let rl=false;const hadCtl=!!navigator.serviceWorker.controller;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(rl||!hadCtl)return;rl=true;location.reload()})})}
+
+$('#vsel').onchange=e=>{D.cur=e.target.value;save();render()};$('#fab').onclick=()=>entryForm();
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;render()});
+
+try{if(D.running){if(!D.running.paused&&!D.running.ending){startGPS();lockOn()}}hook();render();if(D.running&&D.running.ending&&!$('#dlg').open){tab='trips';render()}}catch(e){window.__err(e.message)}
+</script></body></html>

@@ -311,6 +311,43 @@ reg.addEventListener('updatefound',()=>{const w=reg.installing;w.addEventListene
 setInterval(()=>reg.update().catch(()=>{}),3600000)}).catch(()=>{});
 let rl=false;const hadCtl=!!navigator.serviceWorker.controller;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(rl||!hadCtl)return;rl=true;location.reload()})})}
 
+// ===== Home coordinates v2: text inputs, comma decimals, paste, autosave, no clobber =====
+function pNum(v){v=String(v==null?'':v).trim().replace(/[−–—]/g,'-').replace(/\s+/g,'');if(/^[-+]?\d+,\d+$/.test(v))v=v.replace(',','.');if(!/^[-+]?\d+(\.\d+)?$/.test(v))return NaN;return parseFloat(v)}
+function pPair(s){s=String(s||'').trim().replace(/[−–—]/g,'-');let m=s.match(/^([-+]?\d+(?:[.,]\d+)?)\s*[;,]?\s+([-+]?\d+(?:[.,]\d+)?)$/)||s.match(/^([-+]?\d+(?:\.\d+)?)\s*[,;]\s*([-+]?\d+(?:\.\d+)?)$/);if(!m)return null;const a=pNum(m[1]),b=pNum(m[2]);return isNaN(a)||isNaN(b)?null:[a,b]}
+let homeMsg='';
+function homeCard(){const H=D.home||{};const f6=x=>(+x).toFixed(6);
+return`<div class="card" id="homeCard"><h2>🏠 Home</h2><p class="muted">Trips start and end at home; stops in between are legs of one trip.</p>
+<p id="hNow" style="font-weight:600;font-size:16px">${D.home?'✅ Home set: '+f6(H.lat)+', '+f6(H.lon)+' (radius '+(H.r||300)+' m)':'❌ Home not set'}</p>
+<button class="btn" id="hSet" type="button" style="width:100%">📍 Set home to my current location</button>
+<label>Paste coordinates<input id="hPaste" type="text" inputmode="text" autocomplete="off" placeholder="-22.639939, 14.531845"></label>
+<div class="grid"><label>Latitude<span style="display:flex;gap:6px"><button type="button" class="btn2" id="hLatPM" title="Toggle minus" style="min-width:44px">±</button><input id="hLat" type="text" inputmode="text" autocomplete="off" value="${H.lat!=null?H.lat:''}" placeholder="-22.6784"></span></label>
+<label>Longitude<span style="display:flex;gap:6px"><button type="button" class="btn2" id="hLonPM" title="Toggle minus" style="min-width:44px">±</button><input id="hLon" type="text" inputmode="text" autocomplete="off" value="${H.lon!=null?H.lon:''}" placeholder="14.5266"></span></label></div>
+<p class="muted" style="font-size:13px">Southern hemisphere (Namibia) latitude is <b>negative</b>, e.g. -22.64. Comma or dot decimals both work. Saves automatically.</p>
+<label>Radius (m)<input id="hR" type="text" inputmode="numeric" value="${H.r||300}"></label>
+<div id="hMsg">${homeMsg}</div>
+<p style="display:flex;gap:8px"><button class="btn2" id="hSave" type="button">Save</button>${D.home?'<button class="del" id="hClr" type="button">Clear</button>':''}</p></div>`}
+function homeShow(msg){msg=msg||'';const m=$('#hMsg');if(msg===homeMsg&&m&&m.innerHTML)return;homeMsg=msg;if(m)m.innerHTML=homeMsg}
+function saveHome(quiet){const la=pNum($('#hLat')&&$('#hLat').value),lo=pNum($('#hLon')&&$('#hLon').value),r=pNum($('#hR')&&$('#hR').value)||300;
+if(isNaN(la)||isNaN(lo)||Math.abs(la)>90||Math.abs(lo)>180){if(!quiet)homeShow('<p class="due">Enter a valid latitude and longitude (e.g. -22.639939 and 14.531845).</p>');return false}
+D.home={lat:la,lon:lo,r:r};save();
+const now=$('#hNow');if(now)now.textContent='✅ Home set: '+la.toFixed(6)+', '+lo.toFixed(6)+' (radius '+r+' m)';
+if(la>0&&lo>=10&&lo<=26)homeShow(`<p class="due">Did you mean <b>${(-la).toFixed(2)}</b> (south)? <button class="btn" type="button" id="hSouth">Yes</button></p>`);else homeShow('<p style="color:#16a34a">Saved ✓</p>');
+if(!$('#hClr')){const sv=$('#hSave');if(sv)sv.insertAdjacentHTML('afterend','<button class="del" id="hClr" type="button">Clear</button>')}
+return true}
+function homeEditing(){const a=document.activeElement;return !!(a&&a.closest&&a.closest('#homeCard')&&/INPUT|SELECT|TEXTAREA/.test(a.tagName))}
+(function(){const r0=render;let pend=false;
+render=function(){if(homeEditing()){if(!pend){pend=true;const w=()=>{if(homeEditing())return setTimeout(w,700);pend=false;r0()};setTimeout(w,700)}return}return r0.apply(this,arguments)}})();
+document.addEventListener('change',e=>{const id=e.target&&e.target.id;if(id==='hLat'||id==='hLon'||id==='hR')saveHome(true);if(id==='hPaste')homePaste()},true);
+document.addEventListener('focusout',e=>{const id=e.target&&e.target.id;if(id==='hLat'||id==='hLon'||id==='hR')saveHome(true)},true);
+document.addEventListener('input',e=>{if(e.target&&e.target.id==='hPaste'&&pPair(e.target.value))homePaste()},true);
+function homePaste(){const p=pPair($('#hPaste').value);if(!p){homeShow('<p class="due">Could not read that. Use e.g. -22.639939, 14.531845</p>');return}$('#hLat').value=p[0];$('#hLon').value=p[1];$('#hPaste').value='';saveHome()}
+document.addEventListener('click',e=>{const t=e.target,id=t&&t.id;if(!id)return;
+if(id==='hLatPM'||id==='hLonPM'){const i=$(id==='hLatPM'?'#hLat':'#hLon');let v=i.value.trim();i.value=v.charAt(0)==='-'?v.slice(1):'-'+v;saveHome(true)}
+else if(id==='hSouth'){$('#hLat').value=-Math.abs(pNum($('#hLat').value));saveHome()}
+else if(id==='hSave'){e.stopImmediatePropagation();saveHome()}
+else if(id==='hClr'){e.stopImmediatePropagation();D.home=null;save();homeMsg='';r0Safe()}},true);
+function r0Safe(){const a=document.activeElement;if(a&&a.blur)a.blur();render()}
+
 $('#vsel').onchange=e=>{D.cur=e.target.value;save();render()};$('#fab').onclick=()=>entryForm();
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;render()});
 

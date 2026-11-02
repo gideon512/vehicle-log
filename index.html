@@ -348,6 +348,23 @@ else if(id==='hSave'){e.stopImmediatePropagation();saveHome()}
 else if(id==='hClr'){e.stopImmediatePropagation();D.home=null;save();homeMsg='';r0Safe()}},true);
 function r0Safe(){const a=document.activeElement;if(a&&a.blur)a.blur();render()}
 
+// ===== Speed chart v2: x-axis = driving time only; stops collapsed to pin markers =====
+function speedSvg(t){const tr=(t.track||[]).filter(p=>p[3]!=null);if(tr.length<2)return'<p class="muted">No GPS speed data for this trip.</p>';
+const t0=t.start,t1=Math.max(t.end||0,tr[tr.length-1][0]);
+const st=(t.stops||[]).map(s=>({s:s,a:+s.at,b:Math.min(+(s.resumed||t1),t1)})).filter(o=>o.a&&o.b>o.a).sort((x,y)=>x.a-y.a);
+const C=ms=>{let off=0;for(const o of st){if(ms<=o.a)break;off+=Math.min(ms,o.b)-o.a}return ms-t0-off};
+const parked=st.reduce((n,o)=>n+(o.b-o.a),0),span=Math.max(1,C(t1));
+const W=340,H=170,L=28,B=18,TOP=22,mx=Math.max(20,Math.ceil(Math.max.apply(null,tr.map(p=>p[3]))/20)*20);
+const X=ms=>L+C(ms)/span*(W-L-4),Y=v=>H-B-v/mx*(H-B-TOP);let g='';
+for(let v=0;v<=mx;v+=mx/4)g+=`<line x1="${L}" x2="${W-4}" y1="${Y(v)}" y2="${Y(v)}" stroke="#e2e8f0"/><text x="2" y="${Y(v)+3}" font-size="9" fill="#64748b">${Math.round(v)}</text>`;
+let lastX=-99,row=0;
+st.forEach((o,i)=>{const x=X(o.a),d=o.b-o.a,lab='P '+dur(d);row=(x-lastX<44)?1-row:0;lastX=x;const ly=row?17:8;
+const tip=`Stop ${i+1}: parked ${dur(d)} (${fmtT(o.a)}–${fmtT(o.b)})${o.s.lat!==''&&o.s.lat!=null?' at '+(+o.s.lat).toFixed(5)+', '+(+o.s.lon).toFixed(5):''}`;
+g+=`<g><title>${esc(tip)}</title><line x1="${x}" x2="${x}" y1="${ly+3}" y2="${H-B}" stroke="#d97706" stroke-width="1" stroke-dasharray="3,2"/><path d="M${x},${ly+4} c-3.5,-4 -3.5,-8 0,-8 c3.5,0 3.5,4 0,8z" fill="#d97706"/><text x="${Math.min(W-30,x+5)}" y="${ly+1}" font-size="9" fill="#92400e" font-weight="600">${lab}</text></g>`});
+let path='',prev=null;tr.forEach(p=>{if(st.some(o=>p[0]>o.a&&p[0]<o.b))return;const gap=prev&&(p[0]-prev[0]>120000&&!st.some(o=>prev[0]<=o.a&&p[0]>=o.b));path+=(path===''||gap?'M':'L')+X(p[0]).toFixed(1)+','+Y(p[3]).toFixed(1)+' ';prev=p});
+return`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Speed over driving time">${g}<path d="${path}" fill="none" stroke="#0f766e" stroke-width="1.6"/><text x="${L}" y="${H-4}" font-size="9" fill="#64748b">0</text><text x="${W-4}" y="${H-4}" font-size="9" fill="#64748b" text-anchor="end">${dur(span)} driving</text><text x="${(W+L)/2}" y="${H-4}" font-size="9" fill="#64748b" text-anchor="middle">km/h · driving time · 📍P = parked</text></svg>
+<p class="muted" style="margin:4px 0 0">${st.length?`Parked/waiting between legs: <b>${dur(parked)}</b> total over ${st.length} stop${st.length>1?'s':''} (${st.map(o=>dur(o.b-o.a)).join(', ')}) · elapsed ${dur(t1-t0)}`:'No stops during this trip.'}</p>`}
+
 $('#vsel').onchange=e=>{D.cur=e.target.value;save();render()};$('#fab').onclick=()=>entryForm();
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;render()});
 

@@ -1,5 +1,5 @@
 // Vehicle Log service worker. Bump VERSION on every release to trigger the update toast.
-const VERSION = 'vlog-v4';
+const VERSION = 'vlog-v5';
 const ASSETS = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(ASSETS))); });
 self.addEventListener('activate', e => {
